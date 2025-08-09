@@ -2,6 +2,7 @@ import { buildSystemPrompt, buildUserPrompt, finalizeFortuneText } from './promp
 
 interface Env {
 	OPENAI_API_KEY: string;
+	USE_MOCK_WHEN_OPENAI_FAILS?: string;
 }
 
 export type FortuneResponse = {
@@ -43,6 +44,19 @@ function textResponse(text: string, init?: ResponseInit): Response {
 	});
 }
 
+function buildMockFortune(name: string): FortuneResponse {
+	const fortuneText =
+		`${name} isminin enerjisi bugün parlak ve davetkâr. ` +
+		`Yeni başlangıçlara açık ol, küçük bir adım bile büyük fırsatlara dönüşebilir. ` +
+		`Kendine nazik ol ve sezgilerini takip et. Sadece eğlence amaçlıdır.`;
+	return { fortuneText, meta: { mocked: true, timestamp: new Date().toISOString() } };
+}
+
+function isMockEnabled(env: Env): boolean {
+	const v = (env.USE_MOCK_WHEN_OPENAI_FAILS || '').toLowerCase();
+	return v === '1' || v === 'true';
+}
+
 async function handleFortune(request: Request, env: Env): Promise<Response> {
 	let body: unknown;
 	try {
@@ -54,6 +68,12 @@ async function handleFortune(request: Request, env: Env): Promise<Response> {
 	const name = typeof (body as any)?.name === 'string' ? (body as any).name.trim() : '';
 	if (!isValidName(name)) {
 		return jsonResponse({ error: 'Invalid name. Use 2–40 letters and spaces only.' }, { status: 400 });
+	}
+
+	// Geliştirme modu: flag açıksa OpenAI çağrısını atla ve doğrudan mock dön
+	if (isMockEnabled(env)) {
+		const payload = buildMockFortune(name);
+		return jsonResponse(payload, { status: 200 });
 	}
 
 	// OpenAI çağrısı
