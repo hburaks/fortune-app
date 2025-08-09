@@ -1,3 +1,9 @@
+import { buildSystemPrompt, buildUserPrompt, finalizeFortuneText } from './prompt';
+
+interface Env {
+	OPENAI_API_KEY: string;
+}
+
 export type FortuneResponse = {
 	fortuneText: string;
 	meta: { mocked: boolean; timestamp: string };
@@ -5,7 +11,7 @@ export type FortuneResponse = {
 
 const CORS_HEADERS: Record<string, string> = {
 	'Access-Control-Allow-Origin': '*',
-	'Access-Control-Allow-Methods': 'POST, OPTIONS',
+	'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 	'Access-Control-Allow-Headers': 'Content-Type',
 };
 
@@ -37,7 +43,7 @@ function textResponse(text: string, init?: ResponseInit): Response {
 	});
 }
 
-async function handleFortune(request: Request): Promise<Response> {
+async function handleFortune(request: Request, env: Env): Promise<Response> {
 	let body: unknown;
 	try {
 		body = await request.json();
@@ -50,30 +56,62 @@ async function handleFortune(request: Request): Promise<Response> {
 		return jsonResponse({ error: 'Invalid name. Use 2–40 letters and spaces only.' }, { status: 400 });
 	}
 
-	const fortuneText =
-		`${name} isminin enerjisi bugün parlak ve davetkâr. ` +
-		`Yeni başlangıçlara açık ol, küçük bir adım bile büyük fırsatlara dönüşebilir. ` +
-		`Kendine nazik ol ve sezgilerini takip et. Sadece eğlence amaçlıdır.`;
+	// OpenAI çağrısı
+	try {
+		const system = buildSystemPrompt();
+		const user = buildUserPrompt(name);
 
-	const payload: FortuneResponse = {
-		fortuneText,
-		meta: { mocked: true, timestamp: new Date().toISOString() },
-	};
-	return jsonResponse(payload, { status: 200 });
+		const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				model: 'gpt-4o-mini',
+				messages: [
+					{ role: 'system', content: system },
+					{ role: 'user', content: user },
+				],
+				temperature: 0.7,
+				max_tokens: 300,
+			}),
+		});
+
+		if (!resp.ok) {
+			const errText = await resp.text().catch(() => '');
+			return jsonResponse({ error: 'Upstream OpenAI error', details: errText.slice(0, 500) }, { status: 502 });
+		}
+
+		const data = await resp.json();
+		const raw = data?.choices?.[0]?.message?.content ?? '';
+		const fortuneText = finalizeFortuneText(String(raw || ''));
+
+		const payload: FortuneResponse = {
+			fortuneText,
+			meta: { mocked: false, timestamp: new Date().toISOString() },
+		};
+		return jsonResponse(payload, { status: 200 });
+	} catch (e) {
+		return jsonResponse({ error: 'AI request failed' }, { status: 500 });
+	}
 }
-
 export default {
-	async fetch(request): Promise<Response> {
+	async fetch(request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
+		// Health check (secret varlığını sızdırmadan doğrula)
+		if (request.method === 'GET' && url.pathname === '/health') {
+			return jsonResponse({ ok: true, openaiConfigured: Boolean(env.OPENAI_API_KEY) });
+		}
 
 		// CORS preflight
 		if (request.method === 'OPTIONS') {
 			return new Response(null, { status: 204, headers: CORS_HEADERS });
 		}
 
-		// Mock fortune endpoint
+		// Fortune endpoint
 		if (request.method === 'POST' && url.pathname === '/fortune') {
-			return handleFortune(request);
+			return handleFortune(request, env);
 		}
 
 		// Mevcut örnekler kalsın (isteğe bağlı)
