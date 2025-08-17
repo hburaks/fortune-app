@@ -17,12 +17,12 @@ export default function ResultScreen() {
 
 		getFortune(name)
 			.then((data) => setResult(data.fortuneText))
-			.catch((e) => setError(e.message))
+			.catch((e) => setError(JSON.parse(e.message).error))
 			.finally(() => setLoading(false));
 	}, [name]);
 
 	if (loading) return <Text>Yükleniyor...</Text>;
-	if (error) return <Text>Hata: {error}</Text>;
+	if (error) return <Text>{error}</Text>;
 
 	return (
 		<SafeAreaView style={{ flex: 1, padding: 16, gap: 12 }}>

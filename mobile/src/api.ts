@@ -13,7 +13,7 @@ export async function getFortune(name: string): Promise<FortuneResponse> {
 	});
 	if (!resp.ok) {
 		const text = await resp.text().catch(() => '');
-		throw new Error(`API error ${resp.status}: ${text.slice(0, 200)}`);
+		throw new Error(text);
 	}
 	return resp.json();
 }

@@ -2,7 +2,7 @@ import { buildSystemPrompt, buildUserPrompt, finalizeFortuneText } from './promp
 
 interface Env {
 	OPENAI_API_KEY: string;
-	USE_MOCK_WHEN_OPENAI_FAILS?: string;
+	USE_MOCK_FOR_AI?: string;
 }
 
 export type FortuneResponse = {
@@ -53,7 +53,7 @@ function buildMockFortune(name: string): FortuneResponse {
 }
 
 function isMockEnabled(env: Env): boolean {
-	const v = (env.USE_MOCK_WHEN_OPENAI_FAILS || '').toLowerCase();
+	const v = (env.USE_MOCK_FOR_AI || '').toLowerCase();
 	return v === '1' || v === 'true';
 }
 
@@ -100,7 +100,8 @@ async function handleFortune(request: Request, env: Env): Promise<Response> {
 
 		if (!resp.ok) {
 			const errText = await resp.text().catch(() => '');
-			return jsonResponse({ error: 'Upstream OpenAI error', details: errText.slice(0, 500) }, { status: 502 });
+			console.error('API error:', { status: resp.status, details: errText });
+			return jsonResponse({ error: 'Hata oluştu. Lütfen daha sonra tekrar deneyin.'}, { status: 502 });
 		}
 
 		const data = await resp.json();
@@ -113,7 +114,7 @@ async function handleFortune(request: Request, env: Env): Promise<Response> {
 		};
 		return jsonResponse(payload, { status: 200 });
 	} catch (e) {
-		return jsonResponse({ error: 'AI request failed' }, { status: 500 });
+		return jsonResponse({ error: 'AI isteği başarısız oldu.' }, { status: 500 });
 	}
 }
 export default {
